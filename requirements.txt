@@ -1,0 +1,17 @@
+anthropic>=2.6.0
+fastapi>=0.115
+uvicorn[standard]>=0.34
+sqlalchemy>=2.0
+pydantic>=2.10
+pyyaml>=6.0
+pypdf>=5.0
+python-docx>=1.1
+python-multipart>=0.0.20
+numpy>=2.0
+httpx>=0.28  # Gemini backend (LLM_PROVIDER=gemini)
+
+# dev
+pytest>=8.0
+
+# optional: dense embeddings for hybrid RAG (set RAG_EMBEDDINGS=fastembed)
+# fastembed>=0.4

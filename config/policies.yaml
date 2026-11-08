@@ -1,0 +1,116 @@
+# =============================================================================
+# Chính sách truy cập dữ liệu (ABAC) - nguồn sự thật duy nhất cho phân quyền dữ liệu.
+#
+# Mỗi resource có danh sách rule. Rule khớp khi người dùng có `role` (bỏ trống = ai cũng
+# khớp) và đối tượng dữ liệu nằm trong `scope`:
+#   self            : chính mình
+#   direct_reports  : cấp dưới trực tiếp
+#   subtree         : toàn bộ tuyến báo cáo bên dưới (theo manager_id)
+#   same_unit       : cùng đơn vị (team) với mình
+#   role_scope      : các đơn vị mà vai trò được gán (role_assignments.scope_unit) + đơn vị con
+#   group           : toàn tập đoàn
+#
+# Obligations (ràng buộc kèm theo khi được phép):
+#   audit: standard | sensitive   (sensitive = ghi nhật ký truy cập dữ liệu nhạy cảm)
+#   min_group_size: k             (số liệu tổng hợp: nhóm < k người sẽ bị ẩn, chống suy ngược)
+#
+# Vai trò tự động: employee (mọi người), manager (có cấp dưới), unit_head (trưởng đơn vị).
+# Vai trò gán: ceo, exec, chro, cfo, cnb, hrbp, finance, it_support, auditor, platform_admin.
+# Lưu ý: platform_admin quản trị HỆ THỐNG, KHÔNG mặc nhiên được xem dữ liệu nhân sự.
+# =============================================================================
+
+resources:
+  directory.public:
+    description: "Danh bạ: họ tên, chức danh, đơn vị, email, quản lý, nơi làm việc"
+    classification: internal
+    rules:
+      - { role: employee, scope: group }
+
+  profile.employment:
+    description: "Thông tin công việc: ngày vào làm, cấp bậc, trạng thái, lý do nghỉ việc"
+    classification: confidential
+    rules:
+      - { scope: self }
+      - { role: manager, scope: subtree }
+      - { role: hrbp, scope: role_scope, audit: sensitive }
+      - { role: cnb, scope: role_scope, audit: sensitive }
+      - { role: chro, scope: group, audit: sensitive }
+
+  profile.personal:
+    description: "Dữ liệu cá nhân: ngày sinh, SĐT cá nhân, CCCD, địa chỉ, người phụ thuộc, xếp loại hiệu suất"
+    classification: restricted
+    rules:
+      - { scope: self }
+      - { role: hrbp, scope: role_scope, audit: sensitive }
+      - { role: cnb, scope: role_scope, audit: sensitive }
+      - { role: chro, scope: group, audit: sensitive }
+
+  compensation.individual:
+    description: "Lương, phụ cấp, phiếu lương, lịch sử điều chỉnh lương của từng người"
+    classification: restricted
+    rules:
+      - { scope: self }
+      - { role: cnb, scope: role_scope, audit: sensitive }
+      - { role: chro, scope: group, audit: sensitive }
+      # CEO chỉ xem lương cá nhân của cấp dưới trực tiếp (C-level); còn lại xem số tổng hợp.
+      - { role: ceo, scope: direct_reports, audit: sensitive }
+
+  compensation.aggregate:
+    description: "Quỹ lương, lương trung bình/trung vị theo nhóm"
+    classification: confidential
+    rules:
+      - { role: unit_head, scope: subtree, min_group_size: 5, audit: sensitive }
+      - { role: hrbp, scope: role_scope, min_group_size: 5, audit: sensitive }
+      - { role: finance, scope: role_scope, min_group_size: 5, audit: sensitive }
+      - { role: ceo, scope: group, min_group_size: 3, audit: sensitive }
+      - { role: cfo, scope: group, min_group_size: 3, audit: sensitive }
+      - { role: cnb, scope: role_scope, min_group_size: 1, audit: sensitive }
+      - { role: chro, scope: group, min_group_size: 1, audit: sensitive }
+
+  workforce.aggregate:
+    description: "Headcount, tuyển mới, nghỉ việc, tỷ lệ nghỉ việc, ngày phép đã dùng"
+    classification: confidential
+    rules:
+      - { role: manager, scope: subtree }
+      - { role: hrbp, scope: role_scope }
+      - { role: cnb, scope: role_scope }
+      - { role: exec, scope: role_scope }
+
+  leave.individual:
+    description: "Số dư phép, đơn nghỉ và LOẠI nghỉ (nghỉ ốm là dữ liệu sức khỏe)"
+    classification: confidential
+    rules:
+      - { scope: self }
+      - { role: manager, scope: subtree }
+      - { role: hrbp, scope: role_scope }
+
+  leave.calendar:
+    description: "Lịch vắng mặt (chỉ ngày vắng, không có loại nghỉ / lý do)"
+    classification: internal
+    rules:
+      - { role: employee, scope: same_unit }
+      - { role: manager, scope: subtree }
+      - { role: hrbp, scope: role_scope }
+
+  finance.budget:
+    description: "Ngân sách kế hoạch / thực tế theo đơn vị"
+    classification: confidential
+    rules:
+      - { role: unit_head, scope: subtree }
+      - { role: finance, scope: role_scope }
+      - { role: exec, scope: role_scope }
+
+  expense.individual:
+    description: "Đề nghị thanh toán / hoàn ứng chi phí"
+    classification: confidential
+    rules:
+      - { scope: self }
+      - { role: manager, scope: subtree }
+      - { role: finance, scope: role_scope }
+
+  access_log.self:
+    description: "Ai đã truy cập dữ liệu nhạy cảm của tôi"
+    classification: confidential
+    rules:
+      - { scope: self }
+      - { role: auditor, scope: group }

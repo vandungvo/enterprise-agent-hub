@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Enterprise Agent Hub</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+</head>
+<body>
+  <!-- ============ Login ============ -->
+  <section id="login-view" class="login hidden">
+    <div class="login-card">
+      <div class="brand"><span class="logo">◆</span> Enterprise Agent Hub</div>
+      <p class="muted">Nền tảng điều phối AI Agent cho doanh nghiệp</p>
+      <form id="login-form">
+        <label>Email <input id="login-email" type="email" required autocomplete="username" /></label>
+        <label>Mật khẩu <input id="login-password" type="password" required autocomplete="current-password" /></label>
+        <button type="submit" class="primary">Đăng nhập</button>
+        <p id="login-error" class="error"></p>
+      </form>
+      <div class="demo-users">
+        <div class="muted small">Tài khoản demo (bấm để đăng nhập nhanh):</div>
+        <div id="demo-user-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ App ============ -->
+  <section id="app-view" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand"><span class="logo">◆</span> Agent Hub</div>
+      <nav id="nav">
+        <button data-view="chat" class="active">💬 Trợ lý AI</button>
+        <button data-view="approvals">✅ Phê duyệt <span id="approval-badge" class="badge hidden"></span></button>
+        <button data-view="access">🔐 Quyền của tôi</button>
+        <button data-view="knowledge">📚 Tri thức</button>
+        <button data-view="dashboard" data-requires="usage">📊 Mức độ sử dụng AI</button>
+        <button data-view="audit" data-requires="auditor">🛡️ Kiểm toán dữ liệu</button>
+        <button data-view="admin" data-requires="admin">⚙️ Quản trị</button>
+      </nav>
+      <div class="conv-header">
+        <span>Cuộc trò chuyện</span>
+        <button id="new-chat" class="ghost small" title="Cuộc trò chuyện mới">＋ Mới</button>
+      </div>
+      <ul id="conversation-list" class="conv-list"></ul>
+      <div class="me">
+        <div id="me-name"></div>
+        <div id="me-meta" class="muted small"></div>
+        <button id="logout" class="ghost small">Đăng xuất</button>
+      </div>
+    </aside>
+
+    <main>
+      <!-- Chat -->
+      <div id="view-chat" class="view">
+        <header class="chat-header">
+          <label class="small muted">Agent:
+            <select id="agent-select"></select>
+          </label>
+          <span id="agent-desc" class="muted small"></span>
+        </header>
+        <div id="messages" class="messages"></div>
+        <form id="chat-form" class="composer">
+          <textarea id="chat-input" rows="2" placeholder="Nhập yêu cầu… (Enter để gửi, Shift+Enter xuống dòng)"></textarea>
+          <button id="send-btn" type="submit" class="primary">Gửi</button>
+        </form>
+      </div>
+
+      <!-- Approvals -->
+      <div id="view-approvals" class="view hidden">
+        <h2>Phê duyệt (Human-in-the-loop)</h2>
+        <div class="tabs">
+          <button data-scope="review" class="tab" data-requires="approver">Chờ tôi duyệt</button>
+          <button data-scope="mine" class="tab active">Yêu cầu của tôi</button>
+        </div>
+        <div id="approval-list"></div>
+      </div>
+
+      <!-- My access -->
+      <div id="view-access" class="view hidden">
+        <h2>Quyền truy cập dữ liệu của tôi</h2>
+        <p class="muted small">Quyền được tính tự động từ HRIS (đơn vị, tuyến báo cáo, cấp bậc) và các vai trò được gán.
+          Trợ lý AI chỉ nhận được dữ liệu trong phạm vi dưới đây, dù câu hỏi được diễn đạt thế nào.</p>
+        <div class="card"><h4>Danh tính & vai trò</h4><div id="access-identity"></div></div>
+        <div class="card"><h4>Phạm vi dữ liệu được xem</h4>
+          <table class="table"><thead><tr><th>Loại dữ liệu</th><th>Phân loại</th><th>Phạm vi của bạn</th></tr></thead>
+            <tbody id="access-matrix"></tbody></table></div>
+        <div class="card"><h4>Ai đã xem dữ liệu nhạy cảm của tôi</h4>
+          <table class="table"><thead><tr><th>Thời gian</th><th>Người xem</th><th>Loại dữ liệu</th></tr></thead>
+            <tbody id="access-log"></tbody></table></div>
+      </div>
+
+      <!-- Audit -->
+      <div id="view-audit" class="view hidden">
+        <h2>Nhật ký truy cập dữ liệu nhạy cảm</h2>
+        <label class="small"><input type="checkbox" id="audit-denied" /> Chỉ hiển thị truy cập bị từ chối</label>
+        <table class="table"><thead><tr><th>Thời gian</th><th>Người truy cập</th><th>Dữ liệu</th><th>Đối tượng / phạm vi</th><th>Kết quả</th></tr></thead>
+          <tbody id="audit-log"></tbody></table>
+      </div>
+
+      <!-- Knowledge -->
+      <div id="view-knowledge" class="view hidden">
+        <h2>Knowledge Base</h2>
+        <div id="kb-list" class="kb-grid"></div>
+        <div id="kb-detail" class="hidden">
+          <h3 id="kb-title"></h3>
+          <form id="upload-form" class="upload hidden">
+            <input type="file" id="upload-file" accept=".txt,.md,.pdf,.docx,.csv" required />
+            <input type="text" id="upload-title" placeholder="Tiêu đề (tuỳ chọn)" />
+            <select id="upload-class" title="Phân loại tài liệu">
+              <option value="internal">Nội bộ</option><option value="confidential">Mật</option><option value="restricted">Tuyệt mật</option>
+            </select>
+            <input type="text" id="upload-roles" placeholder="Chỉ vai trò (vd: manager,exec)" title="Để trống = mọi người có quyền vào KB" />
+            <input type="number" id="upload-level" placeholder="Cấp tối thiểu" min="1" max="8" style="width:120px" />
+            <button class="primary" type="submit">Tải lên & index</button>
+            <span id="upload-status" class="muted small"></span>
+          </form>
+          <table class="table"><thead><tr><th>Tài liệu</th><th>Phân loại / ACL</th><th>Chunks</th><th></th></tr></thead>
+            <tbody id="doc-table"></tbody></table>
+          <h4>Thử truy xuất (retrieval test)</h4>
+          <form id="search-form" class="row">
+            <input id="search-q" placeholder="Nhập câu hỏi để xem các đoạn được truy xuất" />
+            <button type="submit">Tìm</button>
+          </form>
+          <div id="search-results"></div>
+        </div>
+      </div>
+
+      <!-- Dashboard -->
+      <div id="view-dashboard" class="view hidden">
+        <h2>Mức độ sử dụng AI <span id="dash-scope" class="muted small"></span></h2>
+        <div class="row">
+          <select id="dash-days"><option value="7">7 ngày</option><option value="30" selected>30 ngày</option><option value="90">90 ngày</option></select>
+          <button id="dash-refresh">Làm mới</button>
+        </div>
+        <div id="dash-tiles" class="tiles"></div>
+        <div class="grid2">
+          <div class="card"><h4>Theo phòng ban</h4><div id="dash-dept"></div></div>
+          <div class="card"><h4>Theo agent</h4><div id="dash-agent"></div></div>
+          <div class="card"><h4>Theo ngày</h4><div id="dash-day"></div></div>
+          <div class="card"><h4>Tool & phê duyệt</h4><div id="dash-tools"></div></div>
+        </div>
+      </div>
+
+      <!-- Admin -->
+      <div id="view-admin" class="view hidden">
+        <h2>Quản trị agent <button id="reload-config" class="small">Tải lại cấu hình</button></h2>
+        <p class="muted small">Agent được cấu hình trong <code>config/platform.yaml</code>.</p>
+        <div id="agent-cards"></div>
+        <h3>Chính sách truy cập dữ liệu <span class="muted small">(config/policies.yaml)</span></h3>
+        <div id="policy-table"></div>
+        <h3>Audit log (tool calls gần đây)</h3>
+        <table class="table"><thead><tr><th>Thời gian</th><th>Người dùng</th><th>Agent</th><th>Tool</th><th>Input</th><th>Kết quả</th></tr></thead>
+          <tbody id="audit-table"></tbody></table>
+      </div>
+    </main>
+  </section>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
