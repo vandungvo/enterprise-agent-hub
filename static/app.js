@@ -3,7 +3,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-const state = { token: null, me: null, conversationId: null, streaming: false, approvalScope: "mine", kb: null };
+const state = { token: null, me: null, conversationId: null, streaming: false, approvalScope: "mine", kb: null, convRequest: 0 };
 try { state.token = localStorage.getItem("agenthub_token"); } catch { /* storage unavailable */ }
 
 const STATUS_VI = { pending: "Chờ duyệt", processing: "Đang xử lý", executed: "Đã thực hiện", rejected: "Từ chối", failed: "Lỗi" };
@@ -61,8 +61,11 @@ async function doLogin(email, password) {
 }
 
 function logout() {
-  state.token = null; state.me = null;
+  // Drop everything that belonged to the previous session so the next user never sees stale data.
+  state.token = null; state.me = null; state.conversationId = null; state.convRequest++;
   try { localStorage.removeItem("agenthub_token"); } catch { /* ignore */ }
+  $("#conversation-list").innerHTML = "";
+  $("#messages").innerHTML = "";
   showLogin();
 }
 
@@ -115,7 +118,10 @@ $$("#nav button").forEach((b) => b.onclick = () => showView(b.dataset.view));
 
 // ------------------------------------------------------------------ conversations
 async function loadConversations() {
+  // Several loads can overlap (login, after each answer, after a delete): only the newest may render.
+  const ticket = ++state.convRequest;
   const convs = await api("/api/conversations");
+  if (ticket !== state.convRequest) return;
   $("#conversation-list").innerHTML = convs.map((c) => `
     <li data-id="${c.id}" class="${c.id === state.conversationId ? "active" : ""}">
       <span title="${esc(c.title)}${c.sensitive ? " (chứa dữ liệu nhạy cảm, tự xoá theo chính sách lưu trữ)" : ""}">${c.sensitive ? "🔒 " : ""}${esc(c.title)}</span><button class="del" data-id="${c.id}" title="Xoá">✕</button>
@@ -163,7 +169,12 @@ function newChat() {
 $("#new-chat").onclick = newChat;
 
 async function openConversation(id) {
-  const conv = await api(`/api/conversations/${id}`);
+  let conv;
+  try { conv = await api(`/api/conversations/${id}`); } catch {
+    newChat();  // deleted meanwhile (another tab / retention purge)
+    loadConversations();
+    return;
+  }
   state.conversationId = id;
   $("#agent-select").value = conv.agent_id;
   $("#agent-select").disabled = true;
