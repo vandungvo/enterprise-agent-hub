@@ -1,0 +1,19 @@
+{
+  "ids": [
+    {"id": "FR-01", "kind": "functional"},
+    {"id": "FR-02", "kind": "functional"},
+    {"id": "FR-03", "kind": "functional"},
+    {"id": "FR-04", "kind": "functional"},
+    {"id": "FR-05", "kind": "functional"},
+    {"id": "FR-06", "kind": "functional"},
+    {"id": "FR-07", "kind": "functional"},
+    {"id": "FR-08", "kind": "functional"},
+    {"id": "FR-09", "kind": "functional"},
+    {"id": "FR-10", "kind": "functional"},
+    {"id": "NFR-01", "kind": "non-functional"},
+    {"id": "NFR-02", "kind": "non-functional"},
+    {"id": "NFR-03", "kind": "non-functional"},
+    {"id": "NFR-04", "kind": "non-functional"},
+    {"id": "NFR-05", "kind": "non-functional"}
+  ]
+}

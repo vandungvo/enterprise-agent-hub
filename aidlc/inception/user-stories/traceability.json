@@ -1,0 +1,10 @@
+{
+  "stories": [
+    {"id": "US-01", "requirements": ["FR-03", "NFR-01"]},
+    {"id": "US-02", "requirements": ["FR-02", "FR-03", "NFR-01"]},
+    {"id": "US-03", "requirements": ["FR-04", "FR-09"]},
+    {"id": "US-04", "requirements": ["FR-04", "FR-09"]},
+    {"id": "US-05", "requirements": ["FR-05", "NFR-01"]},
+    {"id": "US-06", "requirements": ["FR-08", "NFR-02"]}
+  ]
+}

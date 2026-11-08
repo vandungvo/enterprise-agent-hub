@@ -1,0 +1,9 @@
+{
+  "units": [
+    {"id": "U-01", "dependencies": [], "kind": "service"},
+    {"id": "U-02", "dependencies": ["U-01"], "kind": "library"},
+    {"id": "U-03", "dependencies": ["U-01", "U-02", "U-04"], "kind": "service"},
+    {"id": "U-04", "dependencies": ["U-01"], "kind": "service"},
+    {"id": "U-05", "dependencies": ["U-03", "U-04"], "kind": "ui"}
+  ]
+}
