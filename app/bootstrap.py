@@ -1,18 +1,20 @@
-"""Seed demo accounts, HRIS data and knowledge documents (idempotent) + retention housekeeping."""
+"""Process bootstrap: schema migrations, demo accounts, HRIS data and KB documents (idempotent) + retention purge."""
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 
 import yaml
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 
-from . import hris
-from .auth import hash_password
-from .db import ChatMessage, Conversation, Document, SessionLocal, User, init_db, utcnow
-from .rag import knowledge
-from .registry import get_platform
-from .settings import settings
+from app import hris
+from app.access.auth import hash_password
+from app.agents.conversation import purge_expired_conversations
+from app.agents.registry import get_platform
+from app.core.db import SessionLocal, seed_lock
+from app.core.migrations import migrate
+from app.core.settings import settings
+from app.models import Document, User
+from app.rag import knowledge
 
 log = logging.getLogger("agenthub.seed")
 DEMO_PASSWORD = "demo123"
@@ -26,13 +28,19 @@ def parse_front_matter(text: str) -> tuple[dict, str]:
 
 
 def seed() -> None:
-    init_db()
+    """Idempotent bootstrap: schema migrations, demo HRIS, demo accounts, KB documents, retention purge.
+    Runs at every process start; the lock makes concurrent cold starts (serverless) safe."""
+    with seed_lock():
+        _seed()
+
+
+def _seed() -> None:
+    migrate()
     hris.seed_hris()
     hris.reset_org_cache()
     with SessionLocal() as db:
         if not db.scalar(select(func.count()).select_from(User)):
-            for p in hris.PERSONAS:
-                db.add(User(email=p["email"], password_hash=hash_password(DEMO_PASSWORD)))
+            db.add_all(User(email=p["email"], password_hash=hash_password(DEMO_PASSWORD)) for p in hris.PERSONAS)
             db.commit()
             log.info("Seeded %d demo accounts (password: %s)", len(hris.PERSONAS), DEMO_PASSWORD)
         has_docs = bool(db.scalar(select(func.count()).select_from(Document)))
@@ -48,20 +56,6 @@ def seed() -> None:
                 knowledge.ingest(kb_dir.name, f.name, body.encode("utf-8"), title=meta.get("title"),
                                  classification=meta.get("classification", "internal"), acl=acl)
     purge_expired_conversations()
-
-
-def purge_expired_conversations() -> int:
-    """Retention: conversations that touched restricted data are deleted after N days."""
-    cutoff = utcnow() - timedelta(days=settings.sensitive_retention_days)
-    with SessionLocal() as db:
-        ids = list(db.scalars(select(Conversation.id).where(Conversation.sensitive.is_(True),
-                                                            Conversation.updated_at < cutoff)))
-        if ids:
-            db.execute(delete(ChatMessage).where(ChatMessage.conversation_id.in_(ids)))
-            db.execute(delete(Conversation).where(Conversation.id.in_(ids)))
-            db.commit()
-            log.info("Purged %d sensitive conversations past retention", len(ids))
-    return len(ids)
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ from typing import Any
 import httpx
 from anthropic.types.beta import BetaMessage
 
-from .providers import ProviderError, open_stream
+from app.llm.base import ProviderError, open_stream
 
 log = logging.getLogger("agenthub.openai_compat")
 
@@ -100,7 +100,7 @@ def to_request(params: dict, model: str, max_tokens_cap: int) -> dict:
 
 # ---------------------------------------------------------------------------- streaming response
 class _Stream:
-    def __init__(self, client: "OpenAICompatClient", body: dict) -> None:
+    def __init__(self, client: OpenAICompatClient, body: dict) -> None:
         self._client, self._body = client, body
         self._response: httpx.Response | None = None
         self._text: list[str] = []
@@ -110,7 +110,7 @@ class _Stream:
         self._model = body["model"]
         self._done = False
 
-    async def __aenter__(self) -> "_Stream":
+    async def __aenter__(self) -> _Stream:
         headers = {"Content-Type": "application/json"}
         if self._client.api_key:
             headers["Authorization"] = f"Bearer {self._client.api_key}"

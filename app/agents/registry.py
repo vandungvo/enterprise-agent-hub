@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from .settings import settings
+from app.core.settings import settings
 
 if TYPE_CHECKING:
-    from .policy import Principal
+    from app.access import Principal
 
 
 @dataclass
@@ -19,11 +19,11 @@ class Access:
     roles: list[str] = field(default_factory=lambda: ["employee"])
     min_level: int = 0
 
-    def allows(self, p: "Principal") -> bool:
+    def allows(self, p: Principal) -> bool:
         return bool(set(self.roles) & p.roles) and p.level >= self.min_level
 
     @classmethod
-    def parse(cls, raw: dict | None) -> "Access":
+    def parse(cls, raw: dict | None) -> Access:
         raw = raw or {}
         return cls(roles=raw.get("roles", ["employee"]), min_level=raw.get("min_level", 0))
 
@@ -58,22 +58,23 @@ class Platform:
     knowledge_bases: dict[str, KnowledgeBase]
     agents: dict[str, AgentSpec]
 
-    def agents_for(self, p: "Principal") -> list[AgentSpec]:
+    def agents_for(self, p: Principal) -> list[AgentSpec]:
         return [a for a in self.agents.values() if a.access.allows(p)]
 
-    def specialists_for(self, p: "Principal") -> list[AgentSpec]:
+    def specialists_for(self, p: Principal) -> list[AgentSpec]:
         return [a for a in self.agents_for(p) if a.role == "specialist"]
 
-    def kbs_for(self, p: "Principal") -> list[KnowledgeBase]:
+    def kbs_for(self, p: Principal) -> list[KnowledgeBase]:
         return [k for k in self.knowledge_bases.values() if k.access.allows(p)]
 
-    def can_manage_kb(self, kb_id: str, p: "Principal") -> bool:
+    def can_manage_kb(self, kb_id: str, p: Principal) -> bool:
         kb = self.knowledge_bases.get(kb_id)
         return kb is not None and bool(set(kb.managed_by) & p.roles)
 
 
 def load_platform(path=None) -> Platform:
-    raw = yaml.safe_load(open(path or settings.config_path, encoding="utf-8"))
+    with open(path or settings.config_path, encoding="utf-8") as f:
+        raw = yaml.safe_load(f)
     company = raw.get("company", {})
     kbs = {k["id"]: KnowledgeBase(k["id"], k["name"], k.get("description", ""), Access.parse(k.get("access")),
                                   k.get("managed_by", ["platform_admin"]))

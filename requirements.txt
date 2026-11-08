@@ -1,17 +1,18 @@
-anthropic>=2.6.0
-fastapi>=0.115
-uvicorn[standard]>=0.34
-sqlalchemy>=2.0
-pydantic>=2.10
-pyyaml>=6.0
-pypdf>=5.0
-python-docx>=1.1
-python-multipart>=0.0.20
-numpy>=2.0
-httpx>=0.28  # Gemini backend (LLM_PROVIDER=gemini)
+# Runtime dependencies, pinned to the versions the test suite runs against (reproducible builds on
+# Vercel / Docker). Upgrade deliberately: bump, run `pytest` on SQLite and PostgreSQL, then commit.
+anthropic==2.6.0
+fastapi==0.162.2
+uvicorn[standard]==0.54.0
+sqlalchemy==2.1.8
+alembic==1.20.1
+psycopg[binary]==3.3.8      # PostgreSQL driver (DATABASE_URL=postgresql://...)
+pydantic==2.14.3
+pyyaml==6.0.3
+pypdf==7.0.0
+python-docx==1.2.0
+python-multipart==0.0.33
+numpy==2.5.4
+httpx==0.28.1               # Gemini / OpenAI-compatible backends
 
-# dev
-pytest>=8.0
-
-# optional: dense embeddings for hybrid RAG (set RAG_EMBEDDINGS=fastembed)
+# optional: dense embeddings for hybrid RAG (RAG_EMBEDDINGS=fastembed; not for serverless)
 # fastembed>=0.4

@@ -7,10 +7,11 @@ from typing import Literal
 
 from pydantic import Field
 
-from .. import hris
-from ..policy import AccessDenied, Principal, log_access, policy
-from ..rag.text import strip_accents
-from .base import ToolContext, ToolDef, ToolInput, register
+from app import hris
+from app.access import AccessDenied, Principal, log_access, policy
+from app.core.db import engine
+from app.rag.text import strip_accents
+from app.tools.base import ToolContext, ToolDef, ToolInput, register
 
 EMP_REF = ("Email, mã nhân viên (SMxxxx) hoặc họ tên của người cần tra cứu. "
            "BỎ TRỐNG để lấy dữ liệu của chính người dùng.")
@@ -101,9 +102,7 @@ def _run_profile(ctx: ToolContext, inp: EmployeeRefInput) -> str:
     target = resolve_target(ctx, inp.employee)
     p, org = ctx.user, ctx.user.org
     out = {"public": public_card(org, target), "hidden_sections": []}
-    conn = hris.connect()
-    row = dict(conn.execute("SELECT * FROM employees WHERE id=?", (target,)).fetchone())
-    conn.close()
+    row = hris.fetch_one("SELECT * FROM employees WHERE id = :id", id=target)
     for resource, fields, key in [
         ("profile.employment", ("level", "hire_date", "status", "termination_date", "termination_reason"), "employment"),
         ("profile.personal", ("gender", "dob", "personal_phone", "national_id", "address", "dependants",
@@ -132,18 +131,16 @@ class PayslipInput(ToolInput):
 def _run_payslip(ctx: ToolContext, inp: PayslipInput) -> str:
     target = resolve_target(ctx, inp.employee)
     policy.require(ctx.user, "compensation.individual", target, conversation_id=ctx.conversation_id, sink=ctx.sensitive)
-    conn = hris.connect()
-    periods = [r[0] for r in conn.execute("SELECT period FROM payslips WHERE employee_id=? ORDER BY period DESC", (target,))]
+    periods = [r["period"] for r in hris.fetch_all(
+        "SELECT period FROM payslips WHERE employee_id = :eid ORDER BY period DESC", eid=target)]
     if not periods:
-        conn.close()
         return "Chưa có phiếu lương nào."
     period = inp.period or periods[0]
-    row = conn.execute("SELECT * FROM payslips WHERE employee_id=? AND period=?", (target, period)).fetchone()
-    deps = conn.execute("SELECT dependants FROM employees WHERE id=?", (target,)).fetchone()[0]
-    conn.close()
-    if row is None:
+    slip = hris.fetch_one("SELECT * FROM payslips WHERE employee_id = :eid AND period = :period",
+                          eid=target, period=period)
+    deps = hris.fetch_value("SELECT dependants FROM employees WHERE id = :id", id=target)
+    if slip is None:
         return _dump({"error": f"Không có phiếu lương kỳ {period}", "available_periods": periods})
-    slip = dict(row)
     slip.pop("employee_id")
     return _dump({"employee": ctx.user.org.employees[target]["full_name"], "currency": "VND", "payslip": slip,
                   "deductions_applied": {"personal": hris.PERSONAL_DEDUCTION, "dependants": deps,
@@ -158,11 +155,8 @@ register(ToolDef(name="get_payslip", input_model=PayslipInput, run=_run_payslip,
 def _run_comp_history(ctx: ToolContext, inp: EmployeeRefInput) -> str:
     target = resolve_target(ctx, inp.employee)
     policy.require(ctx.user, "compensation.individual", target, conversation_id=ctx.conversation_id, sink=ctx.sensitive)
-    conn = hris.connect()
-    rows = [dict(r) for r in conn.execute(
-        "SELECT effective_date, base_salary, allowance, reason FROM compensation WHERE employee_id=? ORDER BY effective_date",
-        (target,))]
-    conn.close()
+    rows = hris.fetch_all("SELECT effective_date, base_salary, allowance, reason FROM compensation "
+                          "WHERE employee_id = :eid ORDER BY effective_date, id", eid=target)
     return _dump({"employee": ctx.user.org.employees[target]["full_name"], "currency": "VND", "history": rows})
 
 
@@ -174,12 +168,10 @@ register(ToolDef(name="get_compensation_history", input_model=EmployeeRefInput, 
 def _run_leave_balance(ctx: ToolContext, inp: EmployeeRefInput) -> str:
     target = resolve_target(ctx, inp.employee)
     policy.require(ctx.user, "leave.individual", target, conversation_id=ctx.conversation_id, sink=ctx.sensitive)
-    conn = hris.connect()
-    bal = conn.execute("SELECT * FROM leave_balances WHERE employee_id=? AND year=?", (target, date.today().year)).fetchone()
-    conn.close()
-    if bal is None:
+    b = hris.fetch_one("SELECT * FROM leave_balances WHERE employee_id = :eid AND year = :year",
+                       eid=target, year=date.today().year)
+    if b is None:
         return "Chưa có dữ liệu phép năm nay."
-    b = dict(bal)
     return _dump({"employee": ctx.user.org.employees[target]["full_name"], "year": b["year"],
                   "annual_entitled": b["entitled"], "carried_over": b["carried_over"], "annual_used": b["used"],
                   "annual_remaining": b["entitled"] + b["carried_over"] - b["used"], "sick_days_used": b["sick_used"]})
@@ -207,18 +199,15 @@ def _run_leave_list(ctx: ToolContext, inp: LeaveListInput) -> str:
         log_access(p, "leave.individual", scope_desc=f"team ({len(ids)} người)", allowed=True, audit="standard",
                    conversation_id=ctx.conversation_id)
     year = inp.year or date.today().year
-    conn = hris.connect()
-    q = (f"SELECT employee_id, start_date, end_date, days, leave_type, status FROM leave_requests "
-         f"WHERE employee_id IN ({','.join('?' * len(ids))}) AND substr(start_date,1,4)=?")
-    args = [*ids, str(year)]
+    q = ("SELECT employee_id, start_date, end_date, days, leave_type, status FROM leave_requests "
+         "WHERE employee_id IN :ids AND start_date >= :y_from AND start_date < :y_to")
+    args = {"ids": ids, "y_from": f"{year}-01-01", "y_to": f"{year + 1}-01-01"}
     if inp.status != "all":
-        q += " AND status=?"
-        args.append(inp.status)
-    rows = [dict(r) | {"employee": org.employees[r["employee_id"]]["full_name"]}
-            for r in conn.execute(q + " ORDER BY start_date DESC LIMIT 60", args)]
-    conn.close()
+        q += " AND status = :status"
+        args["status"] = inp.status
+    rows = hris.fetch_all(q + " ORDER BY start_date DESC LIMIT 60", **args)
     for r in rows:
-        r.pop("employee_id")
+        r["employee"] = org.employees[r.pop("employee_id")]["full_name"]
     return _dump({"year": year, "count": len(rows), "requests": rows})
 
 
@@ -237,12 +226,10 @@ def _run_calendar(ctx: ToolContext, inp: CalendarInput) -> str:
     if (end - start).days > 62:
         raise ValueError("Khoảng thời gian tối đa 62 ngày")
     ids = policy.scope(p, "leave.calendar").employee_ids
-    conn = hris.connect()
-    rows = conn.execute(
-        f"SELECT employee_id, start_date, end_date, days, leave_type FROM leave_requests WHERE status='approved' "
-        f"AND start_date<=? AND end_date>=? AND employee_id IN ({','.join('?' * len(ids))}) ORDER BY start_date",
-        [end.isoformat(), start.isoformat(), *ids]).fetchall()
-    conn.close()
+    rows = hris.fetch_all(
+        "SELECT employee_id, start_date, end_date, days, leave_type FROM leave_requests WHERE status = 'approved' "
+        "AND start_date <= :end AND end_date >= :start AND employee_id IN :ids ORDER BY start_date, id",
+        end=end.isoformat(), start=start.isoformat(), ids=ids)
     out = []
     for r in rows:
         item = {"employee": org.employees[r["employee_id"]]["full_name"], "from": r["start_date"],
@@ -276,22 +263,17 @@ def _validate_leave(ctx: ToolContext, inp: LeaveInput) -> None:
     if days == 0:
         raise ValueError("Khoảng thời gian không có ngày làm việc nào")
     if inp.leave_type == "annual":
-        conn = hris.connect()
-        b = conn.execute("SELECT entitled + carried_over - used FROM leave_balances WHERE employee_id=? AND year=?",
-                         (ctx.user.employee_id, s.year)).fetchone()
-        conn.close()
-        if b is not None and b[0] < days:
-            raise ValueError(f"Không đủ phép năm: cần {days} ngày, còn {b[0]} ngày")
+        remaining = hris.fetch_value("SELECT entitled + carried_over - used FROM leave_balances "
+                                     "WHERE employee_id = :eid AND year = :year", eid=ctx.user.employee_id, year=s.year)
+        if remaining is not None and remaining < days:
+            raise ValueError(f"Không đủ phép năm: cần {days} ngày, còn {remaining} ngày")
 
 
 def _leave_approvers(payload: dict, r: Principal) -> list[int]:
     mgr = r.org.employees[r.employee_id]["manager_id"]
     if mgr:
         return [mgr]
-    conn = hris.connect()
-    chro = [row[0] for row in conn.execute("SELECT employee_id FROM role_assignments WHERE role='chro'")]
-    conn.close()
-    return chro
+    return hris.employees_with_role("chro")
 
 
 def _summarize_leave(p: dict, r: Principal) -> str:
@@ -303,21 +285,18 @@ def _summarize_leave(p: dict, r: Principal) -> str:
 def _execute_leave(p: dict, r: Principal) -> str:
     s, e = date.fromisoformat(p["start_date"]), date.fromisoformat(p["end_date"])
     days = hris.workdays(s, e)
-    conn = hris.connect()
-    try:
-        cur = conn.execute(
-            "INSERT INTO leave_requests(employee_id, start_date, end_date, days, leave_type, reason, status, approver_id, created_at) "
-            "VALUES (?,?,?,?,?,?, 'approved', ?, ?)",
-            (r.employee_id, p["start_date"], p["end_date"], days, p["leave_type"], p["reason"],
-             r.org.employees[r.employee_id]["manager_id"], datetime.now().isoformat()))
+    lr, lb = hris.leave_requests, hris.leave_balances
+    with engine.begin() as conn:  # request + balance in one transaction
+        request_id = conn.execute(lr.insert().values(
+            employee_id=r.employee_id, start_date=p["start_date"], end_date=p["end_date"], days=days,
+            leave_type=p["leave_type"], reason=p["reason"], status="approved",
+            approver_id=r.org.employees[r.employee_id]["manager_id"], created_at=datetime.now().isoformat(),
+        ).returning(lr.c.id)).scalar_one()
         col = {"annual": "used", "sick": "sick_used"}.get(p["leave_type"])
         if col:
-            conn.execute(f"UPDATE leave_balances SET {col} = {col} + ? WHERE employee_id=? AND year=?",
-                         (days, r.employee_id, s.year))
-        conn.commit()
-        return f"Đã ghi nhận đơn nghỉ #{cur.lastrowid} ({days} ngày) vào HRIS."
-    finally:
-        conn.close()
+            conn.execute(lb.update().where(lb.c.employee_id == r.employee_id, lb.c.year == s.year)
+                         .values({col: lb.c[col] + days}))
+    return f"Đã ghi nhận đơn nghỉ #{request_id} ({days} ngày) vào HRIS."
 
 
 register(ToolDef(name="submit_leave_request", input_model=LeaveInput, requires_approval=True,

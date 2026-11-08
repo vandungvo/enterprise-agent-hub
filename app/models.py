@@ -1,44 +1,22 @@
-"""Platform database (users, conversations, RAG index, audit, approvals)."""
+"""ORM models for platform data: accounts, conversations, RAG index, audit trails, approvals."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import (
     JSON,
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
     Text,
-    create_engine,
-    event,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.orm import Mapped, mapped_column
 
-from .settings import settings
-
-engine = create_engine(settings.app_db_url, connect_args={"check_same_thread": False})
-
-
-@event.listens_for(engine, "connect")
-def _sqlite_pragmas(dbapi_conn, _):
-    cur = dbapi_conn.cursor()
-    cur.execute("PRAGMA journal_mode=WAL")
-    cur.execute("PRAGMA foreign_keys=ON")
-    cur.close()
-
-
-SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-class Base(DeclarativeBase):
-    pass
+from app.core.db import Base, utcnow
 
 
 class User(Base):
@@ -51,15 +29,9 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
-class AuthSession(Base):
-    __tablename__ = "auth_sessions"
-    token: Mapped[str] = mapped_column(String(100), primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    expires_at: Mapped[datetime] = mapped_column(DateTime)
-
-
 class Conversation(Base):
     __tablename__ = "conversations"
+    __table_args__ = (Index("ix_conversations_user_updated", "user_id", "updated_at"),)  # sidebar listing
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     agent_id: Mapped[str] = mapped_column(String(80))  # entry agent (router or a specialist)
@@ -77,7 +49,7 @@ class ChatMessage(Base):
 
     __tablename__ = "chat_messages"
     id: Mapped[int] = mapped_column(primary_key=True)
-    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"))
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(20))  # user | assistant
     content: Mapped[str] = mapped_column(Text)
     sources: Mapped[list] = mapped_column(JSON, default=list)
@@ -114,6 +86,7 @@ class Chunk(Base):
 
 class LLMCall(Base):
     __tablename__ = "llm_calls"
+    __table_args__ = (Index("ix_llm_calls_department_created", "department", "created_at"),)  # BU-scoped KPIs
     id: Mapped[int] = mapped_column(primary_key=True)
     conversation_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -153,18 +126,36 @@ class PendingAction(Base):
     tool: Mapped[str] = mapped_column(String(80))
     payload: Mapped[dict] = mapped_column(JSON)
     summary: Mapped[str] = mapped_column(Text)
-    requested_by: Mapped[int] = mapped_column(Integer)  # employee id
+    requested_by: Mapped[int] = mapped_column(Integer, index=True)  # employee id
     requester_name: Mapped[str] = mapped_column(String(200), default="")
     department: Mapped[str] = mapped_column(String(50))  # requester BU
-    approver_ids: Mapped[list] = mapped_column(JSON, default=list)  # employee ids allowed to decide
+    # employee ids allowed to decide; mirrored in pending_action_approvers for indexed "waiting for me" lookups
+    approver_ids: Mapped[list] = mapped_column(JSON, default=list)
     agent_id: Mapped[str] = mapped_column(String(80))
     conversation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|executed|rejected|failed
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending|processing|executed|rejected|failed
     decided_by: Mapped[int | None] = mapped_column(Integer, nullable=True)  # employee id
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PendingActionApprover(Base):
+    """Normalized approver list: answers "which requests wait for employee X" with an index, at any volume."""
+
+    __tablename__ = "pending_action_approvers"
+    action_id: Mapped[int] = mapped_column(ForeignKey("pending_actions.id", ondelete="CASCADE"), primary_key=True)
+    employee_id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+
+
+class LoginFailure(Base):
+    """Failed sign-ins, shared by every instance: drives brute-force throttling (app.access.auth.login_throttled)."""
+
+    __tablename__ = "login_failures"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(200), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 class DataAccessLog(Base):
@@ -184,5 +175,9 @@ class DataAccessLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
-def init_db() -> None:
-    Base.metadata.create_all(engine)
+
+def all_metadata():
+    """Base.metadata with every table registered (platform + HRIS) - for migrations and tests."""
+    import app.hris.schema  # noqa: F401  (registers the HRIS tables on Base.metadata)
+
+    return Base.metadata

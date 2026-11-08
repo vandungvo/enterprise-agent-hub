@@ -19,19 +19,20 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import AsyncIterator
 from datetime import date
-from typing import AsyncIterator
 
 import anthropic
 from pydantic import ValidationError
 
-from .db import LLMCall, PendingAction, SessionLocal, ToolCall
-from .llm import FALLBACK_BETA, FALLBACK_MODELS, estimate_cost, get_client
-from .policy import AccessDenied
-from .providers import ProviderConnectionError, ProviderError
-from .registry import AgentSpec
-from .settings import settings
-from .tools import REGISTRY, ToolContext, ToolDef
+from app.access import AccessDenied
+from app.agents.registry import AgentSpec
+from app.core.db import SessionLocal
+from app.core.settings import settings
+from app.llm import FALLBACK_BETA, FALLBACK_MODELS, estimate_cost, get_client
+from app.llm.base import ProviderConnectionError, ProviderError
+from app.models import LLMCall, PendingAction, PendingActionApprover, ToolCall
+from app.tools import REGISTRY, ToolContext, ToolDef
 
 log = logging.getLogger("agenthub.runtime")
 
@@ -157,7 +158,7 @@ class AgentRuntime:
                 yield {"type": "agent_end", "status": "error", "text": f"Không kết nối được tới {exc.provider} API",
                        **base}
                 return
-            except Exception as exc:  # noqa: BLE001 - e.g. missing credentials
+            except Exception as exc:
                 log.exception("Model call failed for agent %s", agent.id)
                 msg = str(exc)
                 if "authentication" in msg.lower():
@@ -166,7 +167,7 @@ class AgentRuntime:
                 return
 
             iteration += 1
-            self._log_call(agent, ctx, response, started)
+            await asyncio.to_thread(self._log_call, agent, ctx, response, started)
 
             if response.stop_reason == "refusal":
                 yield {"type": "agent_end", "status": "refusal",
@@ -220,14 +221,14 @@ class AgentRuntime:
                 output, is_error = f"TỪ CHỐI TRUY CẬP: {exc}", True
             except (ValueError, ValidationError) as exc:
                 output, is_error = f"Lỗi: {exc}", True
-            except Exception:  # noqa: BLE001 - never crash the loop on a tool bug
+            except Exception:
                 log.exception("Tool %s failed", name)
                 output, is_error = "Lỗi hệ thống khi chạy tool. Hãy báo người dùng thử lại sau.", True
 
         if len(output) > MAX_TOOL_RESULT_CHARS:
             output = output[:MAX_TOOL_RESULT_CHARS] + "\n…(đã cắt bớt)"
         latency = int((time.perf_counter() - started) * 1000)
-        self._log_tool(agent, ctx, name, raw_input, output, is_error, latency)
+        await asyncio.to_thread(self._log_tool, agent, ctx, name, raw_input, output, is_error, latency)
         results.append({"type": "tool_result", "tool_use_id": block.id, "content": output, "is_error": is_error})
         yield {"type": "tool_result", "tool": name, "tool_use_id": block.id, "is_error": is_error,
                "preview": _preview(output), **base}
@@ -244,29 +245,37 @@ class AgentRuntime:
             raise ValueError(f"Tool {name} không khả dụng cho agent này")
         inp = tool.input_model.model_validate(raw_input)  # eager streaming: always validate
         if tool.validate:
-            tool.validate(ctx, inp)
+            await asyncio.to_thread(tool.validate, ctx, inp)  # validators may query the HRIS
         if tool.run is not None:
             return await asyncio.to_thread(tool.run, ctx, inp)
 
         payload = inp.model_dump()
         if tool.needs_approval(agent):
-            summary = tool.summarize(payload, ctx.user) if tool.summarize else f"{name}: {payload}"
-            approvers = [a for a in (tool.approvers(payload, ctx.user) if tool.approvers else [])
-                         if a != ctx.user.employee_id]
-            if not approvers:
-                raise ValueError("Không xác định được người phê duyệt cho yêu cầu này; liên hệ HR/IT.")
-            summary += "\nNgười duyệt: " + ", ".join(ctx.user.org.employees[a]["full_name"] for a in approvers)
-            with SessionLocal() as db:
-                action = PendingAction(tool=name, payload=payload, summary=summary, requested_by=ctx.user.employee_id,
-                                       requester_name=ctx.user.full_name, department=ctx.user.bu_code,
-                                       approver_ids=approvers, agent_id=agent.id, conversation_id=ctx.conversation_id)
-                db.add(action)
-                db.commit()
-                action_id = action.id
+            action_id, summary = await asyncio.to_thread(self._queue_for_approval, agent, ctx, tool, payload)
             ctx.approvals.append({"action_id": action_id, "tool": name, "summary": summary})
             return (f"Đã tạo yêu cầu phê duyệt #{action_id}. Hành động CHƯA được thực hiện; sẽ thực hiện "
                     f"sau khi được duyệt. Hãy báo người dùng mã #{action_id} và người duyệt.\nNội dung: {summary}")
         return await asyncio.to_thread(tool.execute, payload, ctx.user)
+
+    @staticmethod
+    def _queue_for_approval(agent: AgentSpec, ctx: ToolContext, tool: ToolDef, payload: dict) -> tuple[int, str]:
+        """Persist a side-effecting call as a PendingAction routed to its approvers (blocking: run in a thread)."""
+        summary = tool.summarize(payload, ctx.user) if tool.summarize else f"{tool.name}: {payload}"
+        approvers = sorted({a for a in (tool.approvers(payload, ctx.user) if tool.approvers else [])
+                            if a != ctx.user.employee_id})
+        if not approvers:
+            raise ValueError("Không xác định được người phê duyệt cho yêu cầu này; liên hệ HR/IT.")
+        summary += "\nNgười duyệt: " + ", ".join(ctx.user.org.employees[a]["full_name"] for a in approvers)
+        with SessionLocal() as db:
+            action = PendingAction(tool=tool.name, payload=payload, summary=summary,
+                                   requested_by=ctx.user.employee_id, requester_name=ctx.user.full_name,
+                                   department=ctx.user.bu_code, approver_ids=approvers, agent_id=agent.id,
+                                   conversation_id=ctx.conversation_id)
+            db.add(action)
+            db.flush()
+            db.add_all(PendingActionApprover(action_id=action.id, employee_id=a) for a in approvers)
+            db.commit()
+            return action.id, summary
 
     async def _delegate(self, ctx: ToolContext, raw_input: dict, depth: int) -> AsyncIterator[dict]:
         agent_id, task = raw_input.get("agent_id"), (raw_input.get("task") or "").strip()
@@ -298,7 +307,7 @@ class AgentRuntime:
                     stop_reason=response.stop_reason or "", request_id=getattr(response, "_request_id", "") or "",
                 ))
                 db.commit()
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("Failed to log LLM call")
 
     def _log_tool(self, agent, ctx, name, raw_input, output, is_error, latency) -> None:
@@ -311,7 +320,7 @@ class AgentRuntime:
                                 tool=name, input=raw_input, output_preview=preview,
                                 is_error=is_error, latency_ms=latency))
                 db.commit()
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("Failed to log tool call")
 
 

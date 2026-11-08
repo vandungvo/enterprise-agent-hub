@@ -29,7 +29,7 @@ from typing import Any
 import httpx
 from anthropic.types.beta import BetaMessage
 
-from .providers import ProviderError, open_stream
+from app.llm.base import ProviderError, open_stream
 
 log = logging.getLogger("agenthub.gemini")
 
@@ -105,7 +105,7 @@ def to_request(params: dict) -> dict:
 
 # ---------------------------------------------------------------------------- streaming response
 class _Stream:
-    def __init__(self, client: "GeminiClient", model: str, body: dict) -> None:
+    def __init__(self, client: GeminiClient, model: str, body: dict) -> None:
         self._client, self._model, self._body = client, model, body
         self._response: httpx.Response | None = None
         self._blocks: list[dict] = []
@@ -115,7 +115,7 @@ class _Stream:
         self._model_version = model
         self._done = False
 
-    async def __aenter__(self) -> "_Stream":
+    async def __aenter__(self) -> _Stream:
         url = f"{API_BASE}/models/{self._model}:streamGenerateContent?alt=sse"
         headers = {"x-goog-api-key": self._client.api_key, "Content-Type": "application/json"}
         self._response = await open_stream(self._client.http, "Gemini", url, headers, self._body,

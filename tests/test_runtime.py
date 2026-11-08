@@ -2,10 +2,11 @@ import asyncio
 
 from sqlalchemy import select
 
-from app.db import PendingAction, SessionLocal, ToolCall
-from app.orchestrator import AgentRuntime
-from app.registry import get_platform
-from app.settings import settings
+from app.agents.registry import get_platform
+from app.agents.runtime import AgentRuntime
+from app.core.db import SessionLocal
+from app.core.settings import settings
+from app.models import PendingAction, ToolCall
 from app.tools import ToolContext
 from tests.fake_claude import FakeClaude, text, tool
 from tests.helpers import P
@@ -34,7 +35,7 @@ def test_router_delegates_and_leave_goes_to_direct_manager():
     messages = [{"role": "user", "content": "Cho tôi nghỉ 7-8/1/2030"}]
     events = asyncio.run(_collect(AgentRuntime(client=fake), pl.agents["router"], messages, ctx))
 
-    assert [e for e in events if e["type"] == "agent_end" and e["depth"] == 0][0]["status"] == "ok"
+    assert next(e for e in events if e["type"] == "agent_end" and e["depth"] == 0)["status"] == "ok"
     enum = next(t for t in fake.calls[0]["tools"] if t["name"] == "delegate_to_agent")["input_schema"]["properties"]["agent_id"]["enum"]
     assert "people" in enum and "insights" not in enum  # staff cannot reach the leadership analyst
     assert [m["role"] for m in messages] == ["user", "assistant", "user", "assistant"]

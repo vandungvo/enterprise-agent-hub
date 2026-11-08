@@ -6,8 +6,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import Field
 
-from ..rag import knowledge
-from .base import ToolContext, ToolDef, ToolInput, register
+from app.rag import knowledge
+from app.tools.base import ToolContext, ToolDef, ToolInput, register
 
 
 class SearchKnowledgeInput(ToolInput):

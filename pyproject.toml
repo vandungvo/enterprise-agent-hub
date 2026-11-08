@@ -1,0 +1,57 @@
+[project]
+name = "enterprise-agent-hub"
+version = "0.4.0"
+description = "Internal multi-agent AI assistant with data-tier ABAC, Vietnamese RAG and human-in-the-loop approvals"
+requires-python = ">=3.12"
+readme = "README.md"
+# Single source of truth for runtime dependencies (Vercel installs from here with uv).
+# requirements.txt mirrors this list for pip / Docker / CI; tests/test_dependencies.py keeps them identical.
+dependencies = [
+    "anthropic==2.6.0",
+    "fastapi==0.162.2",
+    "uvicorn[standard]==0.54.0",
+    "sqlalchemy==2.1.8",
+    "alembic==1.20.1",
+    "psycopg[binary]==3.3.8",
+    "pydantic==2.14.3",
+    "pyyaml==6.0.3",
+    "pypdf==7.0.0",
+    "python-docx==1.2.0",
+    "python-multipart==0.0.33",
+    "numpy==2.5.4",
+    "httpx==0.28.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.2.0", "ruff==0.17.4"]
+embeddings = ["fastembed>=0.4"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import order
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "SIM",      # simplifications
+    "RUF",      # ruff-specific
+]
+ignore = [
+    "B008",     # FastAPI: Depends()/File()/Form() in argument defaults is the framework's idiom
+    "E501",     # long lines: formatter-free codebase, enforced by review instead
+    "SIM108",   # ternaries are not always clearer
+    "RUF001", "RUF002", "RUF003",  # Vietnamese text: ambiguous-unicode checks are noise here
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning:pypdf.*"]

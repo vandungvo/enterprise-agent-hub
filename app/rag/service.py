@@ -7,12 +7,13 @@ from collections import Counter
 from dataclasses import dataclass
 
 import numpy as np
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
-from ..db import Chunk, Document, SessionLocal
-from ..settings import settings
-from .parsing import extract_text
-from .text import chunk_markdown, tokenize
+from app.core.db import SessionLocal
+from app.core.settings import settings
+from app.models import Chunk, Document
+from app.rag.parsing import extract_text
+from app.rag.text import chunk_markdown, tokenize
 
 
 # --------------------------------------------------------------------------- embeddings
@@ -58,15 +59,16 @@ class _Entry:
 class _Index:
     k1, b = 1.5, 0.75
 
-    def __init__(self) -> None:
+    def __init__(self, version: tuple = ()) -> None:
+        self.version = version
         self.entries: list[_Entry] = []
         self.df: Counter = Counter()
         self.avgdl = 1.0
         self.matrix: np.ndarray | None = None
 
     @classmethod
-    def build(cls) -> "_Index":
-        idx = cls()
+    def build(cls, version: tuple) -> _Index:
+        idx = cls(version)
         with SessionLocal() as db:
             rows = db.execute(
                 select(Chunk, Document.title, Document.classification, Document.acl)
@@ -128,7 +130,16 @@ def acl_allows(acl: dict, p) -> bool:
     return True
 
 
+def _corpus_version() -> tuple:
+    """Cheap fingerprint of the chunk table. Chunk ids only grow and deletes lower the count, so any
+    upload or deletion - on ANY server instance - changes it and triggers a rebuild of the local index."""
+    with SessionLocal() as db:
+        return tuple(db.execute(select(func.count(Chunk.id), func.max(Chunk.id))).one())
+
+
 class KnowledgeService:
+    """In-process BM25 (+ optional dense) index over the shared chunk table."""
+
     def __init__(self) -> None:
         self._index: _Index | None = None
         self._lock = threading.Lock()
@@ -139,9 +150,10 @@ class KnowledgeService:
             self._index = None
 
     def _get_index(self) -> _Index:
+        version = _corpus_version()
         with self._lock:
-            if self._index is None:
-                self._index = _Index.build()
+            if self._index is None or self._index.version != version:
+                self._index = _Index.build(version)
             return self._index
 
     # ---- ingestion -----------------------------------------------------------

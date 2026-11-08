@@ -55,7 +55,7 @@ async def open_stream(http: httpx.AsyncClient, provider: str, url: str, headers:
         try:
             err = json.loads(raw)["error"]
             message = err["message"] if isinstance(err, dict) else str(err)
-        except Exception:  # noqa: BLE001
+        except Exception:
             message = raw.decode("utf-8", "replace")[:500]
         if resp.status_code in RETRY_STATUSES and attempt < max_retries:
             wait = _retry_wait(resp, attempt)

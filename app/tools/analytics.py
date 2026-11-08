@@ -14,9 +14,9 @@ from typing import Literal
 
 from pydantic import Field
 
-from .. import hris
-from ..policy import AccessDenied, log_access, policy
-from .base import ToolContext, ToolDef, ToolInput, register
+from app import hris
+from app.access import AccessDenied, log_access, policy
+from app.tools.base import ToolContext, ToolDef, ToolInput, register
 
 COMP_METRICS = {"payroll_cost", "overtime_cost", "avg_base_salary", "median_base_salary"}
 Metric = Literal["headcount", "new_hires", "terminations", "attrition_rate", "leave_days_taken",
@@ -172,24 +172,23 @@ def _run_workforce(ctx: ToolContext, inp: WorkforceInput) -> str:
             groups[k] = {"value": round(100 * b["terms"] / avg_hc, 1) if avg_hc else 0.0, "ids": b["ids"],
                          "extra": {"terminations": b["terms"], "avg_headcount": avg_hc}}
     else:
-        conn = hris.connect()
-        marks = ",".join("?" * len(pop)) or "NULL"
         if m == "leave_days_taken":
-            rows = conn.execute(f"SELECT employee_id, start_date, days FROM leave_requests WHERE status='approved' "
-                                f"AND start_date BETWEEN ? AND ? AND employee_id IN ({marks})",
-                                [start.isoformat(), end.isoformat(), *pop]).fetchall()
+            rows = hris.fetch_all("SELECT employee_id, start_date, days FROM leave_requests WHERE status = 'approved' "
+                                  "AND start_date BETWEEN :start AND :end AND employee_id IN :ids",
+                                  start=start.isoformat(), end=end.isoformat(), ids=pop)
             for r in rows:
                 add(r["start_date"][:7] if by_month else key(emps[r["employee_id"]]), r["days"], r["employee_id"])
         elif m in ("payroll_cost", "overtime_cost"):
-            col = "gross" if m == "payroll_cost" else "overtime"
-            rows = conn.execute(f"SELECT employee_id, period, {col} AS v FROM payslips WHERE period BETWEEN ? AND ? "
-                                f"AND employee_id IN ({marks})", [months[0], months[-1], *pop]).fetchall()
+            col = "gross" if m == "payroll_cost" else "overtime"  # fixed whitelist, not user input
+            rows = hris.fetch_all(f"SELECT employee_id, period, {col} AS v FROM payslips "
+                                  "WHERE period BETWEEN :p_from AND :p_to AND employee_id IN :ids",
+                                  p_from=months[0], p_to=months[-1], ids=pop)
             for r in rows:
                 add(r["period"] if by_month else key(emps[r["employee_id"]]), r["v"], r["employee_id"])
         else:  # avg / median base salary of people active at period end
-            rows = conn.execute(f"SELECT employee_id, base_salary, effective_date FROM compensation WHERE "
-                                f"effective_date <= ? AND employee_id IN ({marks}) ORDER BY effective_date",
-                                [end.isoformat(), *pop]).fetchall()
+            rows = hris.fetch_all("SELECT employee_id, base_salary, effective_date FROM compensation "
+                                  "WHERE effective_date <= :end AND employee_id IN :ids ORDER BY effective_date, id",
+                                  end=end.isoformat(), ids=pop)
             latest = {r["employee_id"]: r["base_salary"] for r in rows}
             for eid, base in latest.items():
                 if _active(emps[eid], end):
@@ -197,7 +196,6 @@ def _run_workforce(ctx: ToolContext, inp: WorkforceInput) -> str:
             for g in groups.values():
                 vals = g["values"]
                 g["value"] = statistics.mean(vals) if m == "avg_base_salary" else statistics.median(vals)
-        conn.close()
 
     # ---- k-anonymity for compensation aggregates
     k = dec.min_group_size if comp else 1
@@ -267,12 +265,12 @@ def _run_budget(ctx: ToolContext, inp: BudgetInput) -> str:
     t = date.today()
     months = _months(inp.period_from or f"{t.year}-01", inp.period_to or f"{t.year}-{t.month:02d}")
     log_access(p, "finance.budget", scope_desc=f"roots={roots}", allowed=True, audit="standard", conversation_id=ctx.conversation_id)
-    conn = hris.connect()
     result = []
     for root in roots:
         units = org.descendants(root) & allowed
-        rows = conn.execute(f"SELECT unit_code, period, category, planned, actual FROM budgets WHERE period BETWEEN ? AND ? "
-                            f"AND unit_code IN ({','.join('?' * len(units))})", [months[0], months[-1], *units]).fetchall()
+        rows = hris.fetch_all("SELECT unit_code, period, category, planned, actual FROM budgets "
+                              "WHERE period BETWEEN :p_from AND :p_to AND unit_code IN :units",
+                              p_from=months[0], p_to=months[-1], units=units)
         agg: dict[str, list[int]] = {}
         for r in rows:
             if inp.group_by == "category":
@@ -291,7 +289,6 @@ def _run_budget(ctx: ToolContext, inp: BudgetInput) -> str:
         tp, ta = sum(v[0] for v in agg.values()), sum(v[1] for v in agg.values())
         result.append({"unit": org.units[root]["name"], "unit_code": root, "planned_total": tp, "actual_total": ta,
                        "variance_pct": round(100 * (ta - tp) / tp, 1) if tp else None, "lines": lines})
-    conn.close()
     return _dump({"currency": "VND", "period": f"{months[0]} → {months[-1]}",
                   "note": "Tháng hiện tại là số thực tế tạm tính (chưa khoá sổ).", "reports": result})
 

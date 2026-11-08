@@ -4,9 +4,10 @@ import json
 import pytest
 from sqlalchemy import select
 
-from app.db import DataAccessLog, SessionLocal
+from app.agents.registry import get_platform
+from app.core.db import SessionLocal
+from app.models import DataAccessLog
 from app.rag import knowledge
-from app.registry import get_platform
 from tests.helpers import P, denied, run_tool
 
 DEV, MGR = "dev.alpha@saomai.vn", "manager.alpha@saomai.vn"

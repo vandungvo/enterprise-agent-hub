@@ -1,3 +1,3 @@
-from .service import knowledge
+from app.rag.service import knowledge
 
 __all__ = ["knowledge"]
