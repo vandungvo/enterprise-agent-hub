@@ -8,4 +8,6 @@ data/
 *.db
 *.sqlite
 .aidlc-engine/
-
+.vercel/
+.env.local
+.env*.local
