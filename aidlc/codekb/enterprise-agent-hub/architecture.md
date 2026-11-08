@@ -12,8 +12,8 @@ Enterprise Agent Hub được thiết kế theo kiến trúc phân lớp hướn
 +---------------------------------------v---------------------------------------+
 |                       APPLICATION TIER (FastAPI Backend)                      |
 |                                                                               |
-|  [Authentication & Session]        [Principal Builder]                        |
-|  - Cookie Session                  - HRIS-backed identity reconstruction      |
+|  [Authentication]                  [Principal Builder]                        |
+|  - Stateless HMAC Bearer token     - HRIS-backed identity reconstruction      |
 |  - Role / Unit / Level resolution  - Manager chain calculation                |
 |                                                                               |
 |  [Agent Runtime & Orchestration]   [Knowledge & Hybrid RAG]                   |
@@ -30,7 +30,7 @@ Enterprise Agent Hub được thiết kế theo kiến trúc phân lớp hướn
 +---------------------------------------v---------------------------------------+
 |                    DATA ACCESS & SECURITY POLICY TIER (ABAC)                  |
 |                                                                               |
-|  [Policy Engine: app/policy.py + config/policies.yaml]                        |
+|  [Policy Engine: app/access/policy.py + config/policies.yaml]                        |
 |  - policy.require() for individual resource checks                            |
 |  - policy.scope() for listing and aggregation filtering                       |
 |  - K-Anonymity Guard (k=3, k=5) with Complementary Suppression                |

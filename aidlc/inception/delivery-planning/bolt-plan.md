@@ -24,7 +24,7 @@ gantt
 - **Units**:
   - `U-01: core-security-policy` (kind: `service`)
 - **Key Capabilities Delivered**:
-  - ABAC Policy Engine (`app/policy.py`) và nạp cấu hình `config/policies.yaml`.
+  - ABAC Policy Engine (`app/access/policy.py`) và nạp cấu hình `config/policies.yaml`.
   - Tái dựng danh tính `Principal` từ HRIS database ở mỗi request.
   - Thuật toán K-anonymity (k=3, k=5) và Complementary Suppression.
   - Bộ che mờ log cho dữ liệu C3 (`REDACTED_TOOL_OUTPUTS`).

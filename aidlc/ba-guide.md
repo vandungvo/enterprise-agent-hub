@@ -7,7 +7,7 @@ Tài liệu dành cho BA mới tham gia dự án Enterprise Agent Hub. Gồm b�
 3. [Bản đồ dự án cho BA](#3-bản-đồ-dự-án-cho-ba): file nào cần đọc, file nào BA sở hữu nội dung
 4. [Bộ câu hỏi và biểu mẫu](#4-bộ-câu-hỏi-cho-stakeholder): câu hỏi theo stakeholder, mẫu tài liệu, thuật ngữ
 
-Tài liệu liên quan: [README](../README.md) · [USE_CASES.md](USE_CASES.md) · [PERMISSION_MODEL.md](PERMISSION_MODEL.md)
+Tài liệu liên quan: [README](../README.md) · [use-case-catalog.md](ideation/scope-definition/use-case-catalog.md) · [permission-model.md](construction/core-security-policy/nfr-design/permission-model.md) · [Bộ tài liệu AI-DLC](README.md)
 
 ---
 
@@ -35,7 +35,7 @@ Mục tiêu: hiểu hệ thống đang làm được gì trước khi đi gặp 
 - [ ] Với mỗi persona, mở trang **🔐 Quyền của tôi** và ghi lại phạm vi dữ liệu họ được xem
 - [ ] Thử ít nhất 3 câu "tấn công" (mạo danh, hỏi lương người khác, hỏi vòng) và xem hệ thống từ chối thế nào
 - [ ] Đăng nhập `chro`, mở **🛡️ Kiểm toán dữ liệu**, tìm lại các lần bị từ chối vừa thử
-- [ ] Đọc [USE_CASES.md](USE_CASES.md) và [PERMISSION_MODEL.md](PERMISSION_MODEL.md)
+- [ ] Đọc [use-case-catalog.md](ideation/scope-definition/use-case-catalog.md) và [permission-model.md](construction/core-security-policy/nfr-design/permission-model.md)
 - [ ] Đọc `config/policies.yaml` và `config/platform.yaml` (xem [mục 3](#3-bản-đồ-dự-án-cho-ba)). Không cần đọc code Python
 
 **Đầu ra:** một trang ghi chú: hệ thống làm được gì, chưa làm được gì, câu hỏi cần làm rõ.
@@ -48,7 +48,7 @@ Mục tiêu: hiểu nhu cầu thật và chọn đúng use case.
 - [ ] Thu thập dữ liệu hiện trạng: số câu hỏi/ticket mỗi tháng gửi HR, IT, Tài chính; nhóm câu hỏi lặp lại; thời gian xử lý
 - [ ] Lấy **mẫu câu hỏi thật** (ẩn danh) từ email, ticket, nhóm chat. Đây là nguyên liệu cho bộ câu hỏi chuẩn sau này
 - [ ] Phỏng vấn theo [bộ câu hỏi ở mục 4](#4-bộ-câu-hỏi-cho-stakeholder)
-- [ ] Đối chiếu nhu cầu với [USE_CASES.md](USE_CASES.md): cái nào đã có (✅), cái nào trong roadmap (🔜), cái nào chưa có
+- [ ] Đối chiếu nhu cầu với [use-case-catalog.md](ideation/scope-definition/use-case-catalog.md): cái nào đã có (✅), cái nào trong roadmap (🔜), cái nào chưa có
 - [ ] Xếp use case theo **giá trị × rủi ro dữ liệu**, chia giai đoạn (xem [mục 2.3](#23-phân-quyền-và-bảo-vệ-dữ-liệu-cá-nhân))
 - [ ] Chốt **phạm vi loại trừ**: những gì trợ lý *không* làm (tư vấn pháp lý, quyết định lương, đánh giá hiệu suất…)
 - [ ] Thống nhất **KPI** trước khi triển khai (xem [mục 2.2](#22-kiến-thức-về-ai--llm), phần đo lường)
@@ -114,14 +114,14 @@ Mục tiêu: chốt **ai được xem dữ liệu gì của ai**. Đây là ph�
 | Chủ đề | BA cần hiểu | Liên quan trong dự án |
 |---|---|---|
 | Cấu trúc phiếu lương | Gross → bảo hiểm (BHXH, BHYT, BHTN) → giảm trừ gia cảnh → thu nhập tính thuế → thuế TNCN → Net | Tool `get_payslip`, agent `people` |
-| Bảo hiểm bắt buộc | Tỷ lệ người lao động đóng, mức trần đóng bảo hiểm | Hằng số trong `app/hris.py` |
-| Thuế TNCN | Biểu thuế lũy tiến, giảm trừ bản thân, giảm trừ người phụ thuộc | Hằng số trong `app/hris.py` |
+| Bảo hiểm bắt buộc | Tỷ lệ người lao động đóng, mức trần đóng bảo hiểm | Hằng số trong `app/hris/` |
+| Thuế TNCN | Biểu thuế lũy tiến, giảm trừ bản thân, giảm trừ người phụ thuộc | Hằng số trong `app/hris/` |
 | Nghỉ phép | Phép năm, phép ốm, chuyển phép sang năm sau, quy trình xin nghỉ | Tool `get_leave_balance`, `submit_leave_request` |
-| Cơ cấu tổ chức | Tập đoàn → khối (BU) → phòng ban → team; tuyến báo cáo; trưởng đơn vị | `app/hris.py` (dữ liệu mẫu) |
+| Cơ cấu tổ chức | Tập đoàn → khối (BU) → phòng ban → team; tuyến báo cáo; trưởng đơn vị | `app/hris/` (dữ liệu mẫu) |
 | Vai trò HR | HRBP (phụ trách một khối), C&B (lương thưởng), CHRO | Vai trò trong `config/policies.yaml` |
 | Chỉ số nhân sự | Headcount, tuyển mới, nghỉ việc, tỷ lệ nghỉ việc, quỹ lương | Tool `workforce_analytics` |
 
-> ⚠️ Các tham số lương, thuế, bảo hiểm trong `app/hris.py` là **giả định cho dữ liệu demo**. Khi triển khai thật, BA phải xác nhận với C&B theo quy định hiện hành. Không lấy số trong code làm căn cứ nghiệp vụ.
+> ⚠️ Các tham số lương, thuế, bảo hiểm trong `app/hris/` là **giả định cho dữ liệu demo**. Khi triển khai thật, BA phải xác nhận với C&B theo quy định hiện hành. Không lấy số trong code làm căn cứ nghiệp vụ.
 
 #### Tài chính
 
@@ -211,7 +211,7 @@ BA không cần biết lập trình AI, nhưng cần hiểu các khái niệm sa
 
 - Dữ liệu nhân sự (gồm cả lương của chính người hỏi) được gửi tới nhà cung cấp LLM để tạo câu trả lời. Cần ký **DPA**, xem xét chế độ không lưu dữ liệu, vị trí xử lý dữ liệu.
 - Cần **đánh giá tác động xử lý dữ liệu cá nhân (DPIA)** theo quy định về bảo vệ dữ liệu cá nhân tại Việt Nam (Nghị định 13/2023/NĐ-CP và Luật Bảo vệ dữ liệu cá nhân). Pháp chế / DPO xác nhận văn bản áp dụng và nội dung đánh giá.
-- Chi tiết: mục *Dữ liệu gửi tới nhà cung cấp model* trong [PERMISSION_MODEL.md](PERMISSION_MODEL.md).
+- Chi tiết: mục *Dữ liệu gửi tới nhà cung cấp model* trong [permission-model.md](construction/core-security-policy/nfr-design/permission-model.md).
 
 ### 2.4. Kỹ thuật đủ dùng
 
@@ -237,7 +237,7 @@ BA không cần đọc code Python, nhưng nên tự làm được những việ
 | `config/policies.yaml` | Ai được xem dữ liệu gì của ai | Nội dung ma trận quyền, đã được HR / Pháp chế duyệt |
 | `config/platform.yaml` | Agent, knowledge base, ai được dùng | `description` của agent, `access.roles`, đặc tả trong `system_prompt` |
 | `seed_docs/**` | Tài liệu nguồn cho knowledge base | Danh sách tài liệu, chủ sở hữu, phân loại và ACL trong front-matter |
-| `docs/USE_CASES.md` | Catalog use case | Cập nhật trạng thái và ưu tiên |
+| `aidlc/ideation/scope-definition/use-case-catalog.md` | Catalog use case | Cập nhật trạng thái và ưu tiên |
 | Bảng *Kịch bản demo theo persona* trong README | Kịch bản kiểm thử thu nhỏ | Mở rộng thành bộ kịch bản chính thức |
 
 ### File BA nên đọc để hiểu
@@ -245,7 +245,7 @@ BA không cần đọc code Python, nhưng nên tự làm được những việ
 | File | Đọc để |
 |---|---|
 | `README.md` | Tổng quan, kiến trúc, luồng xử lý, cách chạy |
-| `docs/PERMISSION_MODEL.md` | Mô hình quyền, threat model, checklist production, đánh đổi đã biết |
+| `aidlc/construction/core-security-policy/nfr-design/permission-model.md` | Mô hình quyền, threat model, checklist production, đánh đổi đã biết |
 | `tests/test_policy.py` (chỉ tên test) | Biết bất biến phân quyền nào đã được kiểm |
 | `app/tools/workflow.py`, phần `EXPENSE_MANAGER_LIMIT` và `_..._approvers` | Biết luật định tuyến phê duyệt hiện tại |
 

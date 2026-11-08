@@ -1,11 +1,15 @@
 # Quality Gates & Merge Invariants
 
-## CI Quality Gate Rules
+| Gate ID | Tiêu chuẩn | Ngưỡng | Cơ chế kiểm tra | Trạng thái |
+|---|---|---|---|---|
+| **QG-01** | Unit test pass rate | 100% trên SQLite **và** PostgreSQL, Python 3.12 + 3.13 | Job `test` trong CI | ✅ Enforced |
+| **QG-02** | Policy regression | 100% test ABAC / k-anonymity / ACL tài liệu | `tests/test_policy.py` (nằm trong QG-01) | ✅ Enforced |
+| **QG-03** | Lint sạch | `ruff check .` không lỗi | Job `lint` trong CI | ✅ Enforced |
+| **QG-04** | Schema khớp migration | `alembic revision --autogenerate` không sinh thay đổi | `tests/test_migrations.py::test_migrations_match_models` | ✅ Enforced |
+| **QG-05** | Hardening không hồi quy | Request id, security headers, login throttling, cron auth, không lộ lỗi nội bộ | `tests/test_hardening.py` | ✅ Enforced |
+| **QG-09** | Kiến trúc phân lớp | Không module nào import ngược chiều phụ thuộc; không import tương đối | `tests/test_architecture.py` | ✅ Enforced |
+| **QG-06** | Thời gian chạy suite | < 30 giây (LLM giả lập `fake_claude.py`) | Thời lượng job CI | ✅ Theo dõi (hiện ~13–16s) |
+| **QG-07** | Không lộ secret | Không có API key / mật khẩu thật trong repo | Gitleaks / GitHub secret scanning | 🔜 Planned (chưa có trong workflow) |
+| **QG-08** | Không Text-to-SQL | Tool không dựng SQL từ input người dùng | Review: SQL chỉ dùng tham số đặt tên; tên cột động chỉ từ whitelist cố định | 🔜 Planned (chưa có kiểm tra tự động) |
 
-| Gate ID | Tên tiêu chuẩn | Ngưỡng bắt buộc (Threshold) | Cơ chế kiểm tra |
-|---|---|---|---|
-| **QG-01** | **Unit Test Pass Rate** | 100% Passed (0 thất bại) | `pytest tests/` |
-| **QG-02** | **Policy Regression Invariant** | 100% Passed trên mọi rule ABAC và K-anonymity | `pytest tests/test_policy.py` |
-| **QG-03** | **Security Leak Check** | Không lộ credentials, API keys hoặc raw secret trong code | Gitleaks / Pattern scanner |
-| **QG-04** | **No Text-to-SQL Check** | 0 câu lệnh Text-to-SQL trong toàn bộ module `app/tools/` | Static AST analysis |
-| **QG-05** | **Test Execution Time** | Toàn bộ suite chạy dưới 30 giây (nhờ `fake_claude.py`) | CI duration monitor |
+Merge vào `main` chỉ khi QG-01 → QG-05 và QG-09 xanh. Bật branch protection trên GitHub (Settings → Branches → Require status checks: `lint`, `test`) để cưỡng chế.

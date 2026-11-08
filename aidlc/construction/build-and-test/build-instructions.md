@@ -1,47 +1,47 @@
 # Build & Installation Instructions
 
 ## 1. Prerequisites
-- Python 3.11 hoặc mới hơn.
-- Trình quản lý gói `pip` hoặc `uv`.
-- Hệ điều hành: Linux, macOS hoặc Windows PowerShell.
+- Python 3.12 hoặc mới hơn (Vercel chạy 3.12; CI kiểm thử 3.12 và 3.13).
+- Tùy chọn: PostgreSQL 16 (production-like), hoặc Docker để chạy `docker compose`.
 
-## 2. Environment Setup & Dependency Installation
+## 2. Cài đặt
 
-```bash
-# 1. Tạo môi trường ảo
+```powershell
 python -m venv .venv
-
-# 2. Kích hoạt môi trường ảo
-# Trên Linux/macOS:
-source .venv/bin/activate
-# Trên Windows PowerShell:
-.venv\Scripts\Activate.ps1
-
-# 3. Cài đặt các thư viện phụ thuộc
-pip install -r requirements.txt
+.\.venv\Scripts\pip install -r requirements-dev.txt   # runtime (đã pin) + pytest, ruff
+copy .env.example .env                                 # điền LLM_PROVIDER và API key
 ```
 
-## 3. Configuration & Environment Variables
-Tạo file `.env` từ file mẫu `.env.example`:
+## 3. Biến môi trường cốt lõi
 
-```bash
-cp .env.example .env
+| Biến | Ý nghĩa |
+|---|---|
+| `LLM_PROVIDER` | `anthropic` (mặc định) \| `gemini` \| `groq` \| `ollama` \| `lmstudio` \| `openrouter` \| `openai` |
+| `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` / `GROQ_API_KEY` / `OPENAI_API_KEY` | Theo provider |
+| `DATABASE_URL` | Trống = SQLite `data/agenthub.db`; production: `postgresql://...` |
+| `AGENTHUB_SECRET` | Khóa HMAC ký token đăng nhập (bắt buộc nên đặt ở production) |
+| `LOG_FORMAT` / `LOG_LEVEL` | `text` \| `json`; `INFO` |
+| `CRON_SECRET` | Bật `/api/internal/maintenance` cho scheduler |
+
+Danh sách đầy đủ: `.env.example` và README.
+
+## 4. Khởi động
+
+```powershell
+.\.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
 ```
 
-Các biến môi trường cốt lõi:
-- `ANTHROPIC_API_KEY`: Khóa API của Anthropic Claude (Primary model).
-- `GEMINI_API_KEY`: Khóa API Google Gemini (Tùy chọn nếu dùng provider gemini).
-- `LLM_PROVIDER`: `claude` (mặc định), `gemini`, hoặc `openai_compat`.
-- `DATABASE_URL`: Đường dẫn CSDL SQLite (mặc định `sqlite:///data/enterprise.db`).
-- `SENSITIVE_RETENTION_DAYS`: Số ngày lưu trữ các phiên hội thoại C3 (mặc định 30).
+Lúc khởi động, app tự chạy **Alembic migrations** rồi seed dữ liệu mẫu (idempotent, có khóa khi nhiều instance cùng khởi động). Không cần bước seed riêng (`app/bootstrap.py` chạy trong lifespan). Kiểm tra: `GET /api/health`.
 
-## 4. Database Seeding & Startup
+Production-like bằng container: `docker compose up --build` (app + PostgreSQL 16).
 
-```bash
-# Khởi tạo dữ liệu mẫu tập đoàn Sao Mai Group (100 nhân viên, lương, phép)
-python -m app.seed
+## 5. Làm việc với schema
 
-# Khởi chạy server FastAPI ở chế độ development
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```powershell
+# sau khi sửa model trong app/models.py hoặc bảng trong app/hris/schema.py:
+.\.venv\Scripts\alembic revision --autogenerate -m "mo ta thay doi"   # sinh migrations/versions/NNNN_*.py, review rồi commit
+.\.venv\Scripts\alembic upgrade head                                 # áp dụng (app cũng tự làm khi khởi động)
+.\.venv\Scripts\alembic current
 ```
-Truy cập giao diện Web tại: `http://localhost:8000`
+
+`tests/test_migrations.py` fail nếu model và migration lệch nhau.

@@ -20,7 +20,7 @@
 
 | Issue ID | Description | Current Status | Resolution Plan | Source |
 |---|---|---|---|---|
-| I-01 | Bản thử nghiệm hiện tại dùng SQLite và lưu session trong bộ nhớ/cookie đơn giản | In Progress | Nâng cấp sang PostgreSQL với connection pool và xác thực SSO OIDC cho môi trường Production | [Q1] |
+| I-01 | Bản demo trên Vercel từng dùng SQLite per-instance (hội thoại, phê duyệt lúc hiện lúc mất) | Resolved (2026-11-09) | Token stateless ký HMAC (ADR-06) + PostgreSQL dùng chung cho mọi trạng thái (ADR-07). Còn lại cho production: SSO OIDC, Alembic migration | [Q1] |
 | I-02 | K-anonymity hiện tại áp dụng trên từng truy vấn đơn lẻ; chưa chống suy ngược qua nhiều truy vấn liên tiếp kéo dài | Planned | Bổ sung giới hạn tần suất truy vấn nhạy cảm và cơ chế diffing protection | [intent] |
 
 ## 4. Dependencies

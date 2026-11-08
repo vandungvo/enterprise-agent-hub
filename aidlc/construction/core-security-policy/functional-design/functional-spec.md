@@ -11,7 +11,7 @@
   - `roles`: Tập hợp các vai trò tự động (`employee`, `manager`, `unit_head`) và vai trò được gán (`ceo`, `exec`, `chro`, `cfo`, `cnb`, `hrbp`, `finance`, `auditor`, `it_support`, `platform_admin`).
   - `role_scopes`: Bản đồ phạm vi tương ứng của từng vai trò (e.g. `hrbp: SMG`).
 
-## 2. Policy Enforcement Engine Logic (`app/policy.py`)
+## 2. Policy Enforcement Engine Logic (`app/access/policy.py`)
 Mỗi yêu cầu truy cập dữ liệu được thẩm định bằng quy tắc:
 1. **`policy.require(principal, resource, target_id)`**:
    - Tra cứu cấu hình `policies[resource]`.

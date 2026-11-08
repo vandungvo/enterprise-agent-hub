@@ -5,17 +5,17 @@
 ```mermaid
 graph TD
     UI[Web Portal Client] -->|REST / SSE| API[FastAPI Gateway - app/main.py]
-    API --> AUTH[Auth & Principal - app/auth.py]
-    API --> CHAT[Chat Service - app/chat.py]
+    API --> AUTH[Auth & Principal - app/access/auth.py]
+    API --> CHAT[Chat Service - app/agents/conversation.py]
     
-    CHAT --> ORCH[Agent Orchestrator - app/orchestrator.py]
+    CHAT --> ORCH[Agent Orchestrator - app/agents/runtime.py]
     ORCH --> ROUTER[Router Agent]
     ROUTER -->|delegate| SPEC[Specialist Agents: people, insights, finance, it, info]
     
     SPEC --> TOOLS[Typed Tools - app/tools/]
     SPEC --> RAG[Hybrid RAG Engine - app/rag/]
     
-    TOOLS --> POLICY[ABAC Policy Engine - app/policy.py]
+    TOOLS --> POLICY[ABAC Policy Engine - app/access/policy.py]
     RAG --> ACL[Document ACL Filter]
     
     POLICY --> DB[(Enterprise Database - SQLAlchemy)]
