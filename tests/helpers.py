@@ -1,5 +1,5 @@
-from app.policy import AccessDenied, principal_for
-from app.registry import get_platform
+from app.access import AccessDenied, principal_for
+from app.agents.registry import get_platform
 from app.tools import REGISTRY, ToolContext
 
 

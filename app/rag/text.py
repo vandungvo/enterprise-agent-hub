@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from itertools import pairwise
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _WORD = re.compile(r"\w+", re.UNICODE)
@@ -25,8 +26,8 @@ def tokenize(text: str) -> list[str]:
     words = _WORD.findall(text)
     plain = [strip_accents(w) for w in words]
     tokens = list(words)
-    tokens += [p for w, p in zip(words, plain) if p != w]
-    tokens += [f"{a}_{b}" for a, b in zip(plain, plain[1:])]
+    tokens += [p for w, p in zip(words, plain, strict=True) if p != w]
+    tokens += [f"{a}_{b}" for a, b in pairwise(plain)]
     return tokens
 
 
@@ -55,7 +56,7 @@ def chunk_markdown(text: str, size: int = 900, overlap: int = 150) -> list[TextC
         if m:
             flush()
             level = len(m.group(1))
-            path[:] = path[: level - 1] + [m.group(2).strip()]
+            path[:] = [*path[:level - 1], m.group(2).strip()]
             rest = "\n".join(para.splitlines()[1:]).strip()
             if rest:
                 current.append(rest)

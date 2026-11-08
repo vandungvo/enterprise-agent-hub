@@ -14,7 +14,7 @@ sequenceDiagram
     participant LLM as 🧠 LLM Provider (Claude / Gemini)
 
     User->>UI: Nhập câu hỏi: "Xem lương tháng 10 của tôi"
-    UI->>Router: POST /api/chat (Kèm Session Cookie)
+    UI->>Router: POST /api/chat (Kèm Bearer token)
     Note over Router: Dựng lại Principal: dev.alpha (L3, Games)
     Router->>LLM: Gọi LLM phân tích ý định
     LLM-->>Router: Tool call: delegate_to_agent("people", query)

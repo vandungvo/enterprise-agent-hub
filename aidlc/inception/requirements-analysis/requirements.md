@@ -73,7 +73,7 @@
 ## 2. Non-Functional Requirements (NFR)
 
 ### NFR-01: Zero Prompt Injection Leakage
-- Toàn bộ dữ liệu mật C3 và phạm vi truy cập dữ liệu phải được thẩm định tại tầng logic code (`app/policy.py`). Không có bất kỳ lệnh prompt injection hay jailbreak nào có thể mở rộng quyền của người dùng.
+- Toàn bộ dữ liệu mật C3 và phạm vi truy cập dữ liệu phải được thẩm định tại tầng logic code (`app/access/policy.py`). Không có bất kỳ lệnh prompt injection hay jailbreak nào có thể mở rộng quyền của người dùng.
 
 ### NFR-02: Latency & Streaming Responsiveness
 - Thời gian bắt đầu nhận token đầu tiên (Time to First Token - TTFT) qua SSE stream phải đạt dưới 1.5 giây.

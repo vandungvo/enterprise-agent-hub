@@ -3,8 +3,9 @@ from datetime import date
 from fastapi.testclient import TestClient
 
 from app import hris
-from app.db import PendingAction, SessionLocal
+from app.core.db import SessionLocal
 from app.main import app
+from app.models import PendingAction, PendingActionApprover
 from tests.helpers import P
 
 client = TestClient(app)
@@ -23,6 +24,19 @@ def test_login_and_me():
     assert perms["compensation.individual"] == "Chỉ bản thân"
     assert perms["workforce.aggregate"] == "Không"
     assert client.get("/api/me").status_code == 401
+
+
+def test_session_token_is_signed_and_stateless():
+    """Tokens verify without server-side state (serverless instances do not share a DB) and cannot be forged."""
+    import base64
+    import json
+
+    token = login("dev.alpha")["Authorization"].removeprefix("Bearer ")
+    payload, sig = token.split(".")
+    assert json.loads(base64.urlsafe_b64decode(payload + "==="))["email"] == "dev.alpha@saomai.vn"
+    forged = base64.urlsafe_b64encode(json.dumps({"email": "ceo@saomai.vn", "exp": 9999999999}).encode())
+    for bad in (f"{payload}.{sig[:-2]}AA", f"{forged.decode().rstrip('=')}.{sig}", "garbage"):
+        assert client.get("/api/me", headers={"Authorization": f"Bearer {bad}"}).status_code == 401
 
 
 def test_role_gated_endpoints():
@@ -62,11 +76,11 @@ def test_leave_approval_routed_to_direct_manager():
                           payload={"start_date": f"{year}-12-29", "end_date": f"{year}-12-29",
                                    "leave_type": "annual", "reason": "test"})
         db.add(a)
+        db.flush()
+        db.add(PendingActionApprover(action_id=a.id, employee_id=mgr.employee_id))
         db.commit()
         action_id = a.id
-    conn = hris.connect()
-    used_before = conn.execute("SELECT used FROM leave_balances WHERE employee_id=?", (dev.employee_id,)).fetchone()[0]
-    conn.close()
+    used_before = hris.fetch_value("SELECT used FROM leave_balances WHERE employee_id = :eid AND year = :y", eid=dev.employee_id, y=year)
 
     assert client.post(f"/api/approvals/{action_id}/decision", headers=login("dev.alpha"), json={"approve": True}).status_code == 403
     assert client.post(f"/api/approvals/{action_id}/decision", headers=login("head.games"), json={"approve": True}).status_code == 403
@@ -76,9 +90,7 @@ def test_leave_approval_routed_to_direct_manager():
     assert any(x["id"] == action_id for x in client.get("/api/approvals?scope=review", headers=h).json())
     assert client.post(f"/api/approvals/{action_id}/decision", headers=h, json={"approve": True}).json()["status"] == "executed"
     assert client.post(f"/api/approvals/{action_id}/decision", headers=h, json={"approve": True}).status_code == 409
-    conn = hris.connect()
-    used_after = conn.execute("SELECT used FROM leave_balances WHERE employee_id=?", (dev.employee_id,)).fetchone()[0]
-    conn.close()
+    used_after = hris.fetch_value("SELECT used FROM leave_balances WHERE employee_id = :eid AND year = :y", eid=dev.employee_id, y=year)
     d = date(year, 12, 29)
     assert used_after - used_before == hris.workdays(d, d)
 
@@ -93,3 +105,27 @@ def test_my_data_access_shows_who_viewed_me():
 def test_usage_metrics_scope():
     assert client.get("/api/metrics", headers=login("ceo")).json()["scope"] == "Toàn tập đoàn"
     assert client.get("/api/metrics", headers=login("head.games")).json()["scope"] == "Sao Mai Games"
+
+
+def test_health_reports_database():
+    r = client.get("/api/health")
+    assert r.status_code == 200 and r.json()["database_ok"] is True
+
+
+def test_knowledge_index_picks_up_writes_from_other_instances():
+    """Another server instance writes chunks straight to the shared DB (no local invalidate()):
+    the next search on this instance must rebuild its in-memory index and find them."""
+    from app.models import Chunk, Document
+    from app.rag import knowledge
+
+    knowledge.search("warmup", ["company"], principal=P("dev.alpha"))  # build + cache the index
+    with SessionLocal() as db:
+        doc = Document(kb_id="company", title="Quy chế bãi đỗ xe", filename="parking.md", num_chunks=1)
+        db.add(doc)
+        db.flush()
+        db.add(Chunk(document_id=doc.id, kb_id="company", ordinal=0, heading="Bãi đỗ xe",
+                     text="Nhân viên gửi xe máy miễn phí tại tầng hầm B2 tòa Sao Mai."))
+        db.commit()
+    hits = knowledge.search("gửi xe tầng hầm", ["company"], principal=P("dev.alpha"))
+    assert any(h["doc_title"] == "Quy chế bãi đỗ xe" for h in hits)
+    knowledge.delete_document(doc.id)

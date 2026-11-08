@@ -1,0 +1,25 @@
+# Local production-like stack: app + PostgreSQL.  docker compose up --build  ->  http://localhost:8000
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: agenthub
+      POSTGRES_USER: agenthub
+      POSTGRES_PASSWORD: agenthub
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agenthub -d agenthub"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports: ["8000:8000"]
+    env_file: [.env]   # LLM_PROVIDER / API keys / AGENTHUB_SECRET
+    environment:
+      DATABASE_URL: postgresql://agenthub:agenthub@db:5432/agenthub
+    depends_on:
+      db: {condition: service_healthy}
+
+volumes:
+  pgdata:

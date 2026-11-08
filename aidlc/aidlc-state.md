@@ -26,7 +26,7 @@
 - **Languages**: Python, JavaScript/HTML/CSS
 - **Frameworks**: FastAPI, Pydantic, SQLAlchemy, Uvicorn
 - **Build System**: pip / requirements.txt
-- **Test Status**: 47/47 passing tests verified
+- **Test Status**: 114/114 passing tests verified on SQLite and PostgreSQL; ruff clean (2026-11-09)
 
 ## Execution Plan Summary
 - **Total Stages**: 30

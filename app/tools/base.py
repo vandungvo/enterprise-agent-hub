@@ -1,15 +1,16 @@
 """Tool framework: typed inputs (pydantic), per-agent descriptions, approval gating."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict
 
-from ..registry import AgentSpec, Platform
+from app.agents.registry import AgentSpec, Platform
 
 if TYPE_CHECKING:
-    from ..policy import Principal
+    from app.access import Principal
 
 
 class ToolInput(BaseModel):
@@ -18,7 +19,7 @@ class ToolInput(BaseModel):
 
 @dataclass
 class ToolContext:
-    user: "Principal"
+    user: Principal
     platform: Platform
     agent: AgentSpec
     conversation_id: int | None
@@ -40,9 +41,9 @@ class ToolDef:
     # Read tools implement `run`. Side-effecting tools implement `execute` (+ `summarize`,
     # `approvers`) and go through the approval queue when gated.
     run: Callable[[ToolContext, Any], str] | None = None
-    execute: Callable[[dict, "Principal"], str] | None = None
-    summarize: Callable[[dict, "Principal"], str] | None = None
-    approvers: Callable[[dict, "Principal"], list[int]] | None = None  # employee ids who may approve
+    execute: Callable[[dict, Principal], str] | None = None
+    summarize: Callable[[dict, Principal], str] | None = None
+    approvers: Callable[[dict, Principal], list[int]] | None = None  # employee ids who may approve
     requires_approval: bool = False
     validate: Callable[[ToolContext, Any], None] | None = None  # raise ValueError to reject early
 

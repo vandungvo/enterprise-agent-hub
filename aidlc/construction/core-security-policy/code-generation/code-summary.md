@@ -1,13 +1,14 @@
 # Code Generation Summary: Core Security Policy (U-01)
 
 ## 1. Implemented Files
-- **`app/policy.py`**:
+- **`app/access/policy.py`**:
   - `PolicyEngine`: Lớp quản lý chính sách nạp từ YAML.
   - `require_access()`: Hàm kiểm tra quyền trên một bản ghi cá nhân.
   - `get_data_scope()`: Hàm xác định phạm vi truy vấn cho danh sách/tổng hợp.
   - `log_sensitive_access()`: Hàm ghi log vào bảng `data_access_log`.
-- **`app/auth.py`**:
-  - `get_current_principal()`: Middleware trích xuất cookie session và query HRIS dựng đối tượng `Principal`.
+- **`app/access/auth.py`**:
+  - `create_session()` / `principal_from_token()`: phát hành và xác thực token stateless ký HMAC-SHA256 (email + hạn dùng), sau đó dựng lại `Principal` từ HRIS (ADR-06).
+  - `current_principal()`: FastAPI dependency đọc header `Authorization: Bearer`, trả 401 nếu token sai/hết hạn; `require_any_role()` chặn endpoint theo vai trò.
 - **`config/policies.yaml`**:
   - Khai báo declarative ma trận phân quyền cho 10 resources.
 

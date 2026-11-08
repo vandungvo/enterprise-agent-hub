@@ -4,9 +4,9 @@ import json
 
 import httpx
 
-from app.gemini import DUMMY_SIGNATURE, GeminiClient, to_contents, to_request
-from app.orchestrator import AgentRuntime
-from app.registry import get_platform
+from app.agents.registry import get_platform
+from app.agents.runtime import AgentRuntime
+from app.llm.gemini import DUMMY_SIGNATURE, GeminiClient, to_contents, to_request
 from app.tools import ToolContext
 from tests.helpers import P
 
@@ -113,7 +113,7 @@ def test_runtime_runs_router_delegation_and_denied_tool_on_gemini():
     messages = [{"role": "user", "content": "Lương của manager.alpha?"}]
     events = asyncio.run(_collect(AgentRuntime(client=_client(server)), pl.agents["router"], messages, ctx))
 
-    end = [e for e in events if e["type"] == "agent_end" and e["depth"] == 0][0]
+    end = next(e for e in events if e["type"] == "agent_end" and e["depth"] == 0)
     assert end["status"] == "ok" and end["text"] == "Không được phép xem lương người khác."
     denied = next(e for e in events if e["type"] == "tool_result" and e["tool"] == "get_payslip")
     assert denied["is_error"] and denied["preview"].startswith("TỪ CHỐI TRUY CẬP")
